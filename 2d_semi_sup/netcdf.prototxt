@@ -1,0 +1,34 @@
+layer {
+  name: "NetCDFData1"
+  type: "NetCDFData"
+  top: "NetCDFData1"
+  netcdf_data_param {
+    source: "/project/projectdirs/dasrepo/gordon_bell/deep_learning/data/climate/CAM5_0.25/climo/big_images/netcdf_files/cam5_1_amip_run2.cam2.h2.1979-01-01-00000.nc"
+    variable_data: "TMQ"
+    variable_data: "VBOT"
+    variable_label: "xmin"
+    batch_size: 2
+  }
+}
+layer {
+  name: "Convolution1"
+  type: "Convolution"
+  bottom: "NetCDFData1"
+  top: "Convolution1"
+  convolution_param {
+    num_output: 8
+    pad: 2
+    kernel_size: 5
+    group: 1
+    stride: 2
+    weight_filler {
+      type: "msra"
+    }
+  }
+}
+layer {
+  name: "ReLU1"
+  type: "ReLU"
+  bottom: "Convolution1"
+  top: "Convolution1"
+}
