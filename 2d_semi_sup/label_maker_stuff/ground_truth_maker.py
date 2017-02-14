@@ -22,7 +22,10 @@ def get_gr_truth_configs(kwargs):
     xlen, ylen = xdim / int(scale_factor), ydim / int(scale_factor)
     
     #x,y,w,h,conf1,conf2 plus num_classes for one hot encoding
-    last_dim = 6 + num_classes
+    if kwargs["caffe_format"]:
+        last_dim = 6  #(xywh obj cls)
+    else:
+        last_dim = 6 + num_classes
     return scale_factor, xlen, ylen, last_dim, num_classes 
     
 
@@ -67,15 +70,19 @@ def convert_class_to_one_hot(class_num, num_classes):
 
 
 
-def get_box_vector(coords, scale_factor, num_classes):
+def get_box_vector(coords, scale_factor, num_classes, caffe_format):
     x,y,w,h,cls = coords
     xind, yind = get_xy_inds(x,y,scale_factor)
     xoff, yoff = get_xy_offsets(x, y, xind, yind, scale_factor)
     wp, hp = get_parametrized_wh(w, h, scale_factor)
-    class_1hot_vec = convert_class_to_one_hot(cls, num_classes=num_classes)
-    objectness = [1, 0]
+    if caffe_format:
+        cls_vec = [cls] #classes are 1-4 (no zero on purpose, so that can be filtered out)
+        objectness_vec = [1]
+    else:
+        cls_vec = convert_class_to_one_hot(cls, num_classes=num_classes)
+        objectness_vec = [1, 0]
     box_loc = [xoff, yoff, wp, hp]
-    box_vec = np.asarray(box_loc + objectness + class_1hot_vec)
+    box_vec = np.asarray(box_loc + objectness_vec + cls_vec)
     return box_vec
 
 
@@ -89,22 +96,25 @@ def test_grid(bbox, grid,kwargs):
     xo,yo = x - np.floor(x), y - np.floor(y)
     w,h = np.log2(bbox[2] / scale_factor), np.log2(bbox[3] / scale_factor)
 
-    depth = 6 + num_classes
 
-    caffe_box = grid[:depth,int(x),int(y)]
-    oth_box = grid[int(x),int(y),:depth]
 
     if caffe_format:
+        depth = 6
+        caffe_box = grid[:depth,int(x),int(y)]
         l_box = caffe_box
+        lbl = [cls]
+        obj = [1.]
     else:
+        depth = 6 + num_classes
+        oth_box = grid[int(x),int(y),:depth]
         l_box = oth_box
+        obj = [1., 0.]
         
-    print caffe_box
-    print oth_box
-    lbl = num_classes*[0]
-    lbl[cls-1] = 1
+
+        lbl = num_classes*[0]
+        lbl[cls-1] = 1
     
-    real_box = [xo,yo,w,h,1.,0.]
+    real_box = [xo,yo,w,h] + obj
     real_box.extend(lbl)
     
     print l_box
@@ -130,17 +140,21 @@ def create_yolo_gr_truth(bbox_list, kwargs):
         num_time_steps = len(bbox_list)
         
         gr_truth = np.zeros(( num_time_steps, xlen, ylen, last_dim ))
-        gr_truth = make_default_no_object_1hot(gr_truth)
+        if not caffe_format:
+            gr_truth = make_default_no_object_1hot(gr_truth)
         
         
         
-        
+        # for caffe we have the channels as the following x,y,w,h,obj,cls
+        # obj is 1 or 0 and cls is 1-4 if an obj is there and 0 if not
+        #For noncaffe we have x,y,w,h,obj,no-obj, cls1,cls2,cls3,cls4
+        #cls1-cls4 is one hot encoded vector
         for time_step in range(num_time_steps):
             for coords in bbox_list[time_step]:
                 x,y,w,h,cls = coords
 
                 xind, yind = get_xy_inds(x,y,scale_factor)
-                box_vec = get_box_vector(coords, scale_factor, num_classes)
+                box_vec = get_box_vector(coords, scale_factor, num_classes, caffe_format)
                 gr_truth[time_step,xind,yind,:] = box_vec
 
         if caffe_format:
@@ -173,7 +187,7 @@ def save_label_tensors_to_hdf5(kwargs):
     labels_csv_file = join(kwargs["metadata_dir"], "labels.csv")
     
 
-    
+
     for camfile_name in os.listdir(kwargs["data_dir"]):
         if "2006" not in camfile_name:
             camfile_path = join(kwargs["data_dir"], camfile_name)
@@ -183,6 +197,10 @@ def save_label_tensors_to_hdf5(kwargs):
 
             #test(camfile_path, ym, kwargs)
             save_mask(camfile_name, ym, save_loc=kwargs["metadata_dir"])
+
+            
+            
+            
     
     
 
@@ -215,5 +233,16 @@ if __name__ == "__main__":
                 "time_steps_per_file": 8,
                 "num_classes": 4, "caffe_format": True }
 
-    save_label_tensors_to_hdf5(kwargs)    
+    save_label_tensors_to_hdf5(kwargs)
+    
+
+
+
+# a=h5py.File("/global/cscratch1/sd/racah/TCHero/labels/cam5_1_amip_run2.cam2.h2.1983-07-02-00000.h5")
+
+# a["label"][3,-1]
+
+
+
+
 

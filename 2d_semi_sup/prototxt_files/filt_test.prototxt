@@ -1,0 +1,49 @@
+layer {
+  name: "foo"
+  type: "NetCDFData"
+  top: "data"
+  netcdf_data_param {
+    source: "/global/homes/r/racah/projects/climate-caffe/2d_semi_sup/source_files.txt"
+    variable_data: "PRECT"
+    variable_data: "PS"
+    variable_data: "PSL"
+    variable_data: "QREFHT"
+    variable_data: "T200"
+    variable_data: "T500"
+    variable_data: "TMQ"
+    variable_data: "TREFHT"
+    variable_data: "TS"
+    variable_data: "U850"
+    variable_data: "UBOT"
+    variable_data: "V850"
+    variable_data: "VBOT"
+    variable_data: "Z1000"
+    variable_data: "Z200"
+    variable_data: "ZBOT"
+    batch_size: 4
+    time_stride: 2
+  }
+}
+layer {
+  name: "label"
+  type: "HDF5Data"
+  top: "label"
+  hdf5_data_param {
+    source: "/global/homes/r/racah/projects/climate-caffe/2d_semi_sup/label_files.txt"
+    batch_size: 4
+  }
+}
+layer {
+  name: "gxy"
+  type: "Slice"
+  bottom: "label"
+  top: "gxy"
+  top: "gwh"
+  top: "gobj"
+  top: "gcls"
+  slice_param {
+    slice_point: 2
+    slice_point: 4
+    slice_point: 5
+  }
+}
