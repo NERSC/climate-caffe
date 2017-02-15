@@ -1,1 +1,1 @@
-/global/cscratch1/sd/racah/TCHero/labels/cam5_1_amip_run2.cam2.h2.1982-03-15-00000.h5
+/global/cscratch1/sd/racah/TCHero/unlabelled_labels/cam5_1_amip_run2.cam2.h2.2005-08-19-10800.h5

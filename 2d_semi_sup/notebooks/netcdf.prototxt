@@ -1,5 +1,5 @@
 layer {
-  name: "foo"
+  name: "labelled_data"
   type: "NetCDFData"
   top: "data"
   netcdf_data_param {
@@ -341,24 +341,26 @@ layer {
   top: "Deconvolution6"
 }
 layer {
-  name: "decoder"
+  name: "reconstruction"
   type: "Crop"
   bottom: "Deconvolution6"
   bottom: "data"
-  top: "decoder"
+  top: "reconstruction"
   crop_param {
     axis: 2
     offset: 1
   }
 }
 layer {
-  name: "gxywh"
+  name: "gxy"
   type: "Slice"
   bottom: "label"
-  top: "gxywh"
+  top: "gxy"
+  top: "gwh"
   top: "gobj"
   top: "gcls"
   slice_param {
+    slice_point: 2
     slice_point: 4
     slice_point: 5
   }
@@ -408,12 +410,12 @@ layer {
   top: "Convolution8"
 }
 layer {
-  name: "xywh_param"
+  name: "xy_param"
   type: "Convolution"
   bottom: "Convolution6"
-  top: "xywh_param"
+  top: "xy_param"
   convolution_param {
-    num_output: 4
+    num_output: 2
     pad: 1
     kernel_size: 3
     group: 1
@@ -424,30 +426,64 @@ layer {
   }
 }
 layer {
-  name: "four_d_mask"
+  name: "wh_param"
+  type: "Convolution"
+  bottom: "Convolution6"
+  top: "wh_param"
+  convolution_param {
+    num_output: 2
+    pad: 1
+    kernel_size: 3
+    group: 1
+    stride: 1
+    weight_filler {
+      type: "msra"
+    }
+  }
+}
+layer {
+  name: "two_d_mask"
   type: "Concat"
   bottom: "gobj"
   bottom: "gobj"
-  bottom: "gobj"
-  bottom: "gobj"
-  top: "four_d_mask"
+  top: "two_d_mask"
 }
 layer {
-  name: "mask_pred"
+  name: "xy_pred"
   type: "Eltwise"
-  bottom: "xywh_param"
-  bottom: "four_d_mask"
-  top: "mask_pred"
+  bottom: "xy_param"
+  bottom: "two_d_mask"
+  top: "xy_pred"
   eltwise_param {
     operation: PROD
   }
 }
 layer {
-  name: "mask_xywh"
+  name: "wh_pred"
   type: "Eltwise"
-  bottom: "gxywh"
-  bottom: "four_d_mask"
-  top: "mask_xywh"
+  bottom: "wh_param"
+  bottom: "two_d_mask"
+  top: "wh_pred"
+  eltwise_param {
+    operation: PROD
+  }
+}
+layer {
+  name: "xy_gt"
+  type: "Eltwise"
+  bottom: "gxy"
+  bottom: "two_d_mask"
+  top: "xy_gt"
+  eltwise_param {
+    operation: PROD
+  }
+}
+layer {
+  name: "wh_gt"
+  type: "Eltwise"
+  bottom: "gwh"
+  bottom: "two_d_mask"
+  top: "wh_gt"
   eltwise_param {
     operation: PROD
   }
@@ -473,20 +509,23 @@ layer {
   }
 }
 layer {
-  name: "L_coord"
-  type: "EuclideanLoss"
-  bottom: "mask_pred"
-  bottom: "mask_xywh"
-  top: "L_coord"
+  name: "L_xy"
+  type: "SmoothL1Loss"
+  bottom: "xy_pred"
+  bottom: "xy_gt"
+  top: "L_xy"
 }
 layer {
-  name: "final_loss"
-  type: "Eltwise"
-  bottom: "L_cls"
-  bottom: "L_obj"
-  bottom: "L_coord"
-  top: "final_loss"
-  eltwise_param {
-    operation: SUM
-  }
+  name: "L_wh"
+  type: "SmoothL1Loss"
+  bottom: "wh_pred"
+  bottom: "wh_gt"
+  top: "L_wh"
+}
+layer {
+  name: "L_rec"
+  type: "EuclideanLoss"
+  bottom: "reconstruction"
+  bottom: "data"
+  top: "L_rec"
 }
