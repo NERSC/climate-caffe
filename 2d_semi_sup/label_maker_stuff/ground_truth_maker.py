@@ -9,6 +9,9 @@ from label_loader import  make_labels_for_dataset
 import h5py
 import os
 from os.path import join
+from util import get_timestamp
+import netCDF4 as nc
+import argparse
 
 
 
@@ -133,29 +136,30 @@ def make_default_no_object_1hot(gr_truth):
 
 
 
-def create_yolo_gr_truth(bbox_list, kwargs):
+def create_yolo_gr_truth(bbox_list, kwargs, year):
         caffe_format = kwargs["caffe_format"]
         scale_factor, xlen, ylen, last_dim, num_classes = get_gr_truth_configs(kwargs)
-        
+
         num_time_steps = len(bbox_list)
         
         gr_truth = np.zeros(( num_time_steps, xlen, ylen, last_dim ))
-        if not caffe_format:
-            gr_truth = make_default_no_object_1hot(gr_truth)
-        
-        
-        
-        # for caffe we have the channels as the following x,y,w,h,obj,cls
-        # obj is 1 or 0 and cls is 1-4 if an obj is there and 0 if not
-        #For noncaffe we have x,y,w,h,obj,no-obj, cls1,cls2,cls3,cls4
-        #cls1-cls4 is one hot encoded vector
-        for time_step in range(num_time_steps):
-            for coords in bbox_list[time_step]:
-                x,y,w,h,cls = coords
 
-                xind, yind = get_xy_inds(x,y,scale_factor)
-                box_vec = get_box_vector(coords, scale_factor, num_classes, caffe_format)
-                gr_truth[time_step,xind,yind,:] = box_vec
+        # if the file is specified as unlabelled then we skip this
+        # and return gr_truth as is -> all zeros
+        if year not in kwargs["unlabelled_years"]:
+            if not caffe_format:
+                gr_truth = make_default_no_object_1hot(gr_truth)
+            # for caffe we have the channels as the following x,y,w,h,obj,cls
+            # obj is 1 or 0 and cls is 1-4 if an obj is there and 0 if not
+            #For noncaffe we have x,y,w,h,obj,no-obj, cls1,cls2,cls3,cls4
+            #cls1-cls4 is one hot encoded vector
+            for time_step in range(num_time_steps):
+                for coords in bbox_list[time_step]:
+                    x,y,w,h,cls = coords
+
+                    xind, yind = get_xy_inds(x,y,scale_factor)
+                    box_vec = get_box_vector(coords, scale_factor, num_classes, caffe_format)
+                    gr_truth[time_step,xind,yind,:] = box_vec
 
         if caffe_format:
             gr_truth = np.transpose(gr_truth, axes=(0,3,1,2))
@@ -163,23 +167,58 @@ def create_yolo_gr_truth(bbox_list, kwargs):
 
 
 
-def make_yolo_masks_for_dataset( camfile_name, kwargs, labels_csv_file):
-        box_list = make_labels_for_dataset(camfile_name, labels_csv_file)
-        yolo_mask = create_yolo_gr_truth(box_list, kwargs)
+def make_yolo_masks_for_dataset( camfile_path, kwargs, labels_csv_file):
+        ts = get_timestamp(camfile_path)
+        box_list = make_labels_for_dataset(camfile_path, labels_csv_file)
+        yolo_mask = create_yolo_gr_truth(box_list, kwargs, ts.year)
         return yolo_mask
 
 
 
-def save_mask(camfile_name, mask, save_loc):
-    h5f_name = camfile_name.split(".nc")[0] + ".h5"
-    hf = h5py.File(join(save_loc, h5f_name))
-    hfd = hf.create_dataset(name="label", data=mask)
-    hf.close()
+def save_mask(camfile_name, mask, save_loc, fmt="netcdf"):
+
+    def save_mask_netcdf():
+        netcdf_name = camfile_name.split(".nc")[0] + "_label.nc"
+        rootgrp = nc.Dataset(join(save_loc, netcdf_name), "w")
+
+        time = rootgrp.createDimension("time", mask.shape[0])
+        xdim = rootgrp.createDimension("x", mask.shape[2])
+        ydim = rootgrp.createDimension("y", mask.shape[3])
+
+        x_coord = rootgrp.createVariable("x_coord","f4",("time","x","y"))
+        y_coord = rootgrp.createVariable("y_coord","f4",("time","x","y"))
+        w_coord = rootgrp.createVariable("w_coord","f4",("time","x","y"))
+        h_coord = rootgrp.createVariable("h_coord","f4",("time","x","y"))
+        obj = rootgrp.createVariable("obj","f4",("time","x","y"))
+        cls = rootgrp.createVariable("cls","f4",("time","x","y"))
+
+        vars_ = [x_coord, y_coord, w_coord, h_coord, obj, cls]
+        for i,var in enumerate(vars_):
+            # for every example for the correct variable, for al x and y
+            var[:] = mask[:,i,:,:]
+
+    
+    
+        rootgrp.close()
+    
+    def save_mask_hdf5():
+        h5f_name = camfile_name.split(".nc")[0] + ".h5"
+        hf = h5py.File(join(save_loc, h5f_name))
+        hfd = hf.create_dataset(name="label", data=mask)
+        hf.close()
+    if fmt == "netcdf":
+        save_mask_netcdf()
+    else:
+        save_mask_hdf5()
+
+
+
+
     
 
 
 
-def save_label_tensors_to_hdf5(kwargs):
+def save_label_tensors(kwargs):
 
     
 
@@ -189,14 +228,28 @@ def save_label_tensors_to_hdf5(kwargs):
 
 
     for camfile_name in os.listdir(kwargs["data_dir"]):
-        if "2006" not in camfile_name:
-            camfile_path = join(kwargs["data_dir"], camfile_name)
+
+        camfile_path = join(kwargs["data_dir"], camfile_name)
+        
+        if "amip" in camfile_name:
             ym = make_yolo_masks_for_dataset(camfile_path,
                                      kwargs,
                                     labels_csv_file)
+            if kwargs["with_unlabelled_frames"]:
+                ym_z = np.zeros((kwargs["time_steps_per_file"], ym.shape[1], ym.shape[2], ym.shape[3]))
+                ym_z[0::2] = ym
+                ym = ym_z
+        else:
+            ym = np.zeros((kwargs["time_steps_per_file"], 
+                           6, 
+                           kwargs["xdim"] / kwargs["scale_factor"], 
+                           kwargs["ydim"] / kwargs["scale_factor"]
+                          ))
 
-            #test(camfile_path, ym, kwargs)
-            save_mask(camfile_name, ym, save_loc=kwargs["metadata_dir"])
+
+        #test(camfile_path, ym, kwargs)
+        save_mask(camfile_name, ym, save_loc=kwargs["dest_dir"], fmt=kwargs["file_format"])
+
 
             
             
@@ -225,22 +278,38 @@ def test_hdf5_file(h5f_path, camfile_path, kwargs):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_dir', type=str)
+    parser.add_argument('--dest_dir', type=str)
+
+    args = parser.parse_args().__dict__
+    
     kwargs = {  "metadata_dir": "/global/cscratch1/sd/racah/TCHero/labels",
                 "data_dir": "/global/cscratch1/sd/racah/TCHero/data",
-                "scale_factor": 64, 
+                "scale_factor": 32, 
                 "xdim":768,
                 "ydim":1152,
                 "time_steps_per_file": 8,
-                "num_classes": 4, "caffe_format": True }
+                "file_format": "netcdf",
+                "with_unlabelled_frames": True,
+                "dest_dir": "/global/cscratch1/sd/racah/TCHero/labels_nc",
+                "num_classes": 4, "caffe_format": True, "unlabelled_years": [] }
+    kwargs.update(args)
 
-    save_label_tensors_to_hdf5(kwargs)
+    save_label_tensors(kwargs)
     
 
 
 
-# a=h5py.File("/global/cscratch1/sd/racah/TCHero/labels/cam5_1_amip_run2.cam2.h2.1983-07-02-00000.h5")
+# import matplotlib.pyplot as plt
 
-# a["label"][3,-1]
+# %matplotlib inline
+
+# d=nc.Dataset(
+#     """/project/projectdirs/dasrepo/gordon_bell/deep_learning/data/climate/CAM5_0.25/2xCO2/labels/cam5_1_CLIVAR_2xCO2_quarterdegree_branch2.cam2.h2.0013-06-09-10800_label.nc""")
+
+# plt.imshow(d["obj"][7])
+
 
 
 

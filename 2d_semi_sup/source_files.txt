@@ -1,1 +1,0 @@
-/global/cscratch1/sd/racah/TCHero/data/cam5_1_amip_run2.cam2.h2.2005-08-19-10800.nc

@@ -1,9 +1,9 @@
 layer {
   name: "labelled_data"
   type: "NetCDFData"
-  top: "data"
+  top: "NetCDFData1"
   netcdf_data_param {
-    source: "/global/homes/r/racah/projects/climate-caffe/2d_semi_sup/source_files.txt"
+    source: "/project/projectdirs/dasrepo/gordon_bell/deep_learning/networks/climate/2d_semi_sup/image_files.txt"
     variable_data: "PRECT"
     variable_data: "PS"
     variable_data: "PSL"
@@ -20,17 +20,37 @@ layer {
     variable_data: "Z1000"
     variable_data: "Z200"
     variable_data: "ZBOT"
-    batch_size: 4
-    time_stride: 2
+    batch_size: 16
+    time_stride: 1
+    xdim: 768
+    ydim: 768
+    crop_index_source: "/project/projectdirs/dasrepo/gordon_bell/deep_learning/networks/climate/2d_semi_sup/crop_indices.txt"
+    crop_stride: 32
   }
 }
 layer {
-  name: "label"
-  type: "HDF5Data"
+  name: "data"
+  type: "MVN"
+  bottom: "NetCDFData1"
+  top: "data"
+}
+layer {
+  name: "labelled_data"
+  type: "NetCDFData"
   top: "label"
-  hdf5_data_param {
-    source: "/global/homes/r/racah/projects/climate-caffe/2d_semi_sup/label_files.txt"
-    batch_size: 4
+  netcdf_data_param {
+    source: "/project/projectdirs/dasrepo/gordon_bell/deep_learning/networks/climate/2d_semi_sup/label_files.txt"
+    variable_data: "x_coord"
+    variable_data: "y_coord"
+    variable_data: "w_coord"
+    variable_data: "h_coord"
+    variable_data: "obj"
+    variable_data: "cls"
+    batch_size: 16
+    time_stride: 1
+    xdim: 24
+    ydim: 24
+    crop_index_source: "/project/projectdirs/dasrepo/gordon_bell/deep_learning/networks/climate/2d_semi_sup/crop_indices.txt"
   }
 }
 layer {
@@ -138,40 +158,18 @@ layer {
   }
 }
 layer {
-  name: "ReLU5"
+  name: "encoder"
   type: "ReLU"
   bottom: "Convolution5"
   top: "Convolution5"
 }
 layer {
-  name: "Convolution6"
-  type: "Convolution"
-  bottom: "Convolution5"
-  top: "Convolution6"
-  convolution_param {
-    num_output: 1280
-    pad: 2
-    kernel_size: 5
-    group: 1
-    stride: 2
-    weight_filler {
-      type: "msra"
-    }
-  }
-}
-layer {
-  name: "encoder"
-  type: "ReLU"
-  bottom: "Convolution6"
-  top: "Convolution6"
-}
-layer {
   name: "Deconvolution1"
   type: "Deconvolution"
-  bottom: "Convolution6"
+  bottom: "Convolution5"
   top: "Deconvolution1"
   convolution_param {
-    num_output: 1024
+    num_output: 768
     bias_term: false
     pad: 0
     kernel_size: 5
@@ -180,7 +178,7 @@ layer {
   }
 }
 layer {
-  name: "ReLU6"
+  name: "ReLU5"
   type: "ReLU"
   bottom: "Deconvolution1"
   top: "Deconvolution1"
@@ -189,7 +187,7 @@ layer {
   name: "Crop1"
   type: "Crop"
   bottom: "Deconvolution1"
-  bottom: "Convolution5"
+  bottom: "Convolution4"
   top: "Crop1"
   crop_param {
     axis: 2
@@ -202,7 +200,7 @@ layer {
   bottom: "Crop1"
   top: "Deconvolution2"
   convolution_param {
-    num_output: 768
+    num_output: 512
     bias_term: false
     pad: 0
     kernel_size: 5
@@ -211,7 +209,7 @@ layer {
   }
 }
 layer {
-  name: "ReLU7"
+  name: "ReLU6"
   type: "ReLU"
   bottom: "Deconvolution2"
   top: "Deconvolution2"
@@ -220,7 +218,7 @@ layer {
   name: "Crop2"
   type: "Crop"
   bottom: "Deconvolution2"
-  bottom: "Convolution4"
+  bottom: "Convolution3"
   top: "Crop2"
   crop_param {
     axis: 2
@@ -233,7 +231,7 @@ layer {
   bottom: "Crop2"
   top: "Deconvolution3"
   convolution_param {
-    num_output: 512
+    num_output: 256
     bias_term: false
     pad: 0
     kernel_size: 5
@@ -242,7 +240,7 @@ layer {
   }
 }
 layer {
-  name: "ReLU8"
+  name: "ReLU7"
   type: "ReLU"
   bottom: "Deconvolution3"
   top: "Deconvolution3"
@@ -251,7 +249,7 @@ layer {
   name: "Crop3"
   type: "Crop"
   bottom: "Deconvolution3"
-  bottom: "Convolution3"
+  bottom: "Convolution2"
   top: "Crop3"
   crop_param {
     axis: 2
@@ -264,7 +262,7 @@ layer {
   bottom: "Crop3"
   top: "Deconvolution4"
   convolution_param {
-    num_output: 256
+    num_output: 128
     bias_term: false
     pad: 0
     kernel_size: 5
@@ -273,7 +271,7 @@ layer {
   }
 }
 layer {
-  name: "ReLU9"
+  name: "ReLU8"
   type: "ReLU"
   bottom: "Deconvolution4"
   top: "Deconvolution4"
@@ -282,7 +280,7 @@ layer {
   name: "Crop4"
   type: "Crop"
   bottom: "Deconvolution4"
-  bottom: "Convolution2"
+  bottom: "Convolution1"
   top: "Crop4"
   crop_param {
     axis: 2
@@ -295,37 +293,6 @@ layer {
   bottom: "Crop4"
   top: "Deconvolution5"
   convolution_param {
-    num_output: 128
-    bias_term: false
-    pad: 0
-    kernel_size: 5
-    group: 1
-    stride: 2
-  }
-}
-layer {
-  name: "ReLU10"
-  type: "ReLU"
-  bottom: "Deconvolution5"
-  top: "Deconvolution5"
-}
-layer {
-  name: "Crop5"
-  type: "Crop"
-  bottom: "Deconvolution5"
-  bottom: "Convolution1"
-  top: "Crop5"
-  crop_param {
-    axis: 2
-    offset: 1
-  }
-}
-layer {
-  name: "Deconvolution6"
-  type: "Deconvolution"
-  bottom: "Crop5"
-  top: "Deconvolution6"
-  convolution_param {
     num_output: 16
     bias_term: false
     pad: 0
@@ -335,15 +302,15 @@ layer {
   }
 }
 layer {
-  name: "ReLU11"
+  name: "ReLU9"
   type: "ReLU"
-  bottom: "Deconvolution6"
-  top: "Deconvolution6"
+  bottom: "Deconvolution5"
+  top: "Deconvolution5"
 }
 layer {
   name: "reconstruction"
   type: "Crop"
-  bottom: "Deconvolution6"
+  bottom: "Deconvolution5"
   bottom: "data"
   top: "reconstruction"
   crop_param {
@@ -366,10 +333,10 @@ layer {
   }
 }
 layer {
-  name: "Convolution7"
+  name: "Convolution6"
   type: "Convolution"
-  bottom: "Convolution6"
-  top: "Convolution7"
+  bottom: "Convolution5"
+  top: "Convolution6"
   convolution_param {
     num_output: 4
     pad: 1
@@ -384,14 +351,14 @@ layer {
 layer {
   name: "class_scores"
   type: "ReLU"
-  bottom: "Convolution7"
-  top: "Convolution7"
+  bottom: "Convolution6"
+  top: "Convolution6"
 }
 layer {
-  name: "Convolution8"
+  name: "Convolution7"
   type: "Convolution"
-  bottom: "Convolution6"
-  top: "Convolution8"
+  bottom: "Convolution5"
+  top: "Convolution7"
   convolution_param {
     num_output: 2
     pad: 1
@@ -406,13 +373,13 @@ layer {
 layer {
   name: "obj_scores"
   type: "ReLU"
-  bottom: "Convolution8"
-  top: "Convolution8"
+  bottom: "Convolution7"
+  top: "Convolution7"
 }
 layer {
   name: "xy_param"
   type: "Convolution"
-  bottom: "Convolution6"
+  bottom: "Convolution5"
   top: "xy_param"
   convolution_param {
     num_output: 2
@@ -428,7 +395,7 @@ layer {
 layer {
   name: "wh_param"
   type: "Convolution"
-  bottom: "Convolution6"
+  bottom: "Convolution5"
   top: "wh_param"
   convolution_param {
     num_output: 2
@@ -491,7 +458,7 @@ layer {
 layer {
   name: "L_cls"
   type: "SoftmaxWithLoss"
-  bottom: "Convolution7"
+  bottom: "Convolution6"
   bottom: "gcls"
   top: "L_cls"
   loss_param {
@@ -501,7 +468,7 @@ layer {
 layer {
   name: "L_obj"
   type: "SoftmaxWithLoss"
-  bottom: "Convolution8"
+  bottom: "Convolution7"
   bottom: "gobj"
   top: "L_obj"
   loss_param {
@@ -528,4 +495,22 @@ layer {
   bottom: "reconstruction"
   bottom: "data"
   top: "L_rec"
+}
+layer {
+  name: "final_loss"
+  type: "Eltwise"
+  bottom: "L_cls"
+  bottom: "L_obj"
+  bottom: "L_xy"
+  bottom: "L_wh"
+  bottom: "L_rec"
+  top: "final_loss"
+  eltwise_param {
+    operation: SUM
+    coeff: 1.0
+    coeff: 1.0
+    coeff: 5.0
+    coeff: 7.0
+    coeff: 1e-05
+  }
 }

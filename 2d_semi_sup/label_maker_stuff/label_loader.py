@@ -3,12 +3,11 @@ import matplotlib; matplotlib.use("agg")
 
 
 import sys
-from util import get_timestamp
 import pandas as pd
 import numpy as np
 from os.path import join
 import os
-from util import convert_bbox_minmax_to_cent_xywh
+from util import convert_bbox_minmax_to_cent_xywh, get_timestamp
 
 
 
@@ -26,7 +25,6 @@ def grab_box_coords_for_timestep(fname, label_df, time_step):
 
 def make_labels_for_dataset(fname, labels_csv_file, time_steps_per_file=8):
     '''takes in netcdf file and csv label file and outputs list of array of box coordinates for each time step '''
-
     label_df = pd.read_csv(labels_csv_file)
     box_list = []
     for time_step in range(time_steps_per_file)[::2]:
