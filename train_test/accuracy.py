@@ -1,17 +1,71 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[3]:
 
 import numpy as np
+from numpy import *
 
 
-# In[2]:
+# In[19]:
 
 from sklearn.metrics import average_precision_score
+import matplotlib.pyplot as plt
 
 
-# In[3]:
+# In[20]:
+
+from matplotlib import patches
+
+
+# In[ ]:
+
+
+
+
+# In[6]:
+
+def non_maximal_suppression(box_list, conf,overlap):
+    score=conf
+    XMIN, XMAX, YMIN,YMAX = range(4)
+    x2 = box_list[:, XMAX]
+    x1 = box_list[:, XMIN]
+    y2 = box_list[:, YMAX]
+    y1 = box_list[:, YMIN]
+    
+    area = (x2-x1+1)*(y2-y1+1)
+
+    #vals = sort(score)
+    I = argsort(score)
+    pick = []
+    count = 1
+    while (I.size!=0):
+        #print "Iteration:",count
+        last = I.size
+        i = I[last-1]
+        pick.append(i)
+        suppress = [last-1]
+        for pos in range(last-1):
+            j = I[pos]
+            xx1 = max(x1[i],x1[j])
+            yy1 = max(y1[i],y1[j])
+            xx2 = min(x2[i],x2[j])
+            yy2 = min(y2[i],y2[j])
+            w = xx2-xx1+1
+            h = yy2-yy1+1
+            if (w>0 and h>0):
+                o = w*h/area[j]
+                
+                if (o >overlap):
+                    print "Overlap is",o
+                    suppress.append(pos)
+        I = delete(I,suppress)
+        count = count + 1
+    return box_list[pick]
+    
+
+
+# In[7]:
 
 
 
@@ -25,7 +79,7 @@ def convert_xy_min_max_tensor_to_box_list(xy_min_max):
     box_list = xy_min_max.reshape(xdim*ydim,4)
     return box_list
 
-def calc_score(cls, xy_min_max_pred, xy_min_max_gt, conf_pred, conf_gt, cls_pred, cls_gt, iou_thresh=0.5 ):
+def calc_score(cls, xy_min_max_pred, xy_min_max_gt, conf_pred, conf_gt, cls_pred, cls_gt, iou_thresh=0.1 ,im=None):
 #     for g in [xy_min_max_pred, xy_min_max_gt, conf_pred, conf_gt, cls_pred, cls_gt]:
 #         print g.shape
     # if there is no object then we don't penalize cuz its unlabelled example
@@ -59,15 +113,30 @@ def calc_score(cls, xy_min_max_pred, xy_min_max_gt, conf_pred, conf_gt, cls_pred
     conf_ind = np.argsort(-flat_conf_pred)
     box_list_pred = box_list_pred[conf_ind]
     conf_list = flat_conf_pred[conf_ind]
+    flat_cls_pred = flat_cls_pred[conf_ind]
+    
+    #get only nonzero confidences
+    
+    box_list_pred = box_list_pred[conf_list > 0.0]
+    flat_cls_pred = flat_cls_pred[conf_list > 0.0]
+    conf_list = conf_list[conf_list > 0.0]
+    
 
 
 
 
     #filter so just cls remains
     box_list_pred = box_list_pred[flat_cls_pred == cls]
-
     conf_list = conf_list[flat_cls_pred == cls]
-
+    box_list_pred = non_maximal_suppression(box_list_pred,conf=conf_list,overlap=0.5)
+    
+    #get top 10 boxes
+    box_list_pred = box_list_pred[:10] if box_list_pred.shape[0] >=10 else box_list_pred
+    conf_list = conf_list[:10] if conf_list.shape[0] >=10 else conf_list
+    
+    print cls,conf_list
+    
+    
     num_gt_boxes = box_list_gt.shape[0]
     
     #boolean array for whether gt box has been matched yet
@@ -76,12 +145,17 @@ def calc_score(cls, xy_min_max_pred, xy_min_max_gt, conf_pred, conf_gt, cls_pred
     
     y_true = []
     y_score = []
+    
+    if im is not None:
+        plot_boxes(im,box_list_pred, box_list_gt, cls)
+    
     for box_ind, box_pred in enumerate(box_list_pred):
         iou, iou_ind = get_iou_box_list_of_boxes(box_pred,box_list_gt)
         #add confidence to y_score
         y_score.append(conf_list[box_ind])
-
+        print "box_pred: ", box_pred, "box_gt: ", box_list_gt, "iou: ", iou
         if iou > iou_thresh:
+            
 
             # gt_box can only match with one thang
             if not gt_box_picked_yet[iou_ind]:
@@ -105,7 +179,7 @@ def calc_score(cls, xy_min_max_pred, xy_min_max_gt, conf_pred, conf_gt, cls_pred
     
 
 
-# In[4]:
+# In[8]:
 
 # bba = BBox_Accuracy()
 # for i in range(20):
@@ -115,7 +189,7 @@ def calc_score(cls, xy_min_max_pred, xy_min_max_gt, conf_pred, conf_gt, cls_pred
 # print bba.compute_final_accuracy()
 
 
-# In[6]:
+# In[9]:
 
 def get_obj_cls_scores_from_net_output(output):
 
@@ -126,7 +200,7 @@ def get_obj_cls_scores_from_net_output(output):
     return obj, cls
 
 
-# In[7]:
+# In[10]:
 
 def get_obj_cls_scores_from_label(label):
     cls = label[:,-1] - 1
@@ -135,7 +209,7 @@ def get_obj_cls_scores_from_label(label):
     return obj, cls
 
 
-# In[8]:
+# In[11]:
 
 def get_iou_box_list_of_boxes(box1,box_list):
         XMIN, XMAX, YMIN,YMAX = range(4)
@@ -166,7 +240,7 @@ def get_iou_box_list_of_boxes(box1,box_list):
         return max_iou, ind_max_iou
 
 
-# In[9]:
+# In[12]:
 
 def unparametrize(xy,wh, scale_factor=32):
     xy_raw = unparametrize_xy(xy,scale_factor)
@@ -220,7 +294,7 @@ def convert_from_xy_wh_to_min_max(xy_raw,wh_raw):
     
 
 
-# In[10]:
+# In[13]:
 
 def get_iou_box_pair(box1,box2):
     xmin1, xmax1, ymin1, ymax1 = box1
@@ -261,7 +335,7 @@ def get_iou_box_pair(box1,box2):
     
 
 
-# In[11]:
+# In[14]:
 
 def get_xy_wh(output):
     xy = output[:,:2]
@@ -270,7 +344,7 @@ def get_xy_wh(output):
     
 
 
-# In[12]:
+# In[15]:
 
 def test_unparametrize():
     xy = np.random.rand(4,2,24,24)
@@ -290,12 +364,12 @@ def test_unparametrize():
     return xy_raw, wh_raw
 
 
-# In[13]:
+# In[16]:
 
 xy_raw,wh_raw = test_unparametrize()
 
 
-# In[14]:
+# In[17]:
 
 def test_convert():
     xy_raw,wh_raw = test_unparametrize()
@@ -305,7 +379,7 @@ def test_convert():
     
 
 
-# In[6]:
+# In[18]:
 
 class BBox_Accuracy(object):
     def __init__(self, num_classes=4, iou_thresh=0.5):
@@ -315,10 +389,10 @@ class BBox_Accuracy(object):
         self.y_true = {cls:[] for cls in range(num_classes)}
         
     
-    def update_scores(self,net_output, label):
-        self._compute_score(net_output, label)
+    def update_scores(self,net_output, label, im=None):
+        self._compute_score(net_output, label,im)
 
-    def _compute_score(self,net_output, label):
+    def _compute_score(self,net_output, label,im):
         xy_pred, wh_pred = get_xy_wh(net_output)
         conf_pred, cls_pred = get_obj_cls_scores_from_net_output(net_output)
         xy_gt, wh_gt = get_xy_wh(label)
@@ -329,7 +403,7 @@ class BBox_Accuracy(object):
 
         for ex_ind in range(net_output.shape[0]):
             for cls in range(self.num_classes):
-                y_true, y_score = calc_score(cls, xy_min_max_pred[ex_ind], xy_min_max_gt[ex_ind], conf_pred[ex_ind], conf_gt[ex_ind], cls_pred[ex_ind], cls_gt[ex_ind], iou_thresh=self.iou_thresh )
+                y_true, y_score = calc_score(cls, xy_min_max_pred[ex_ind], xy_min_max_gt[ex_ind], conf_pred[ex_ind], conf_gt[ex_ind], cls_pred[ex_ind], cls_gt[ex_ind], iou_thresh=self.iou_thresh, im=im[ex_ind] )
                 self.y_score[cls].extend(y_score)
                 self.y_true[cls].extend(y_true)
 
@@ -362,12 +436,42 @@ class BBox_Accuracy(object):
     
 
 
-# In[3]:
+# In[17]:
+
+def plot_boxes(im,box_list_pred, box_list_gt, cls):
+    sp = plt.subplot(111)
+    sp.imshow(im)
+    for box in box_list_pred:
+        add_bbox(sp,box,color="r")
+    for box in box_list_gt:
+        add_bbox(sp, box, color="g")
+    plt.show()
+    
+
+
+# In[18]:
+
+def add_bbox(subplot, bbox, color):
+        #box of form center x,y  w,h
+        x1,x2,y1,y2, conf1, cls = bbox
+        
+        h = y2 - y1 +1
+        w = x2 - x1 +1
+        xcent, ycent = ( y2 - h / 2., x2 - w / 2.)
+        subplot.add_patch(patches.Rectangle(
+        xy=( xcent,ycent),
+        width=h,
+        height=w, lw=2,
+        fill=False, color=color))
+        #subplot.text(ycent,xcent,classes[cls], fontdict={"color":color})
+
+
+# In[24]:
 
 #! jupyter nbconvert --to script accuracy.ipynb
 
 
-# In[4]:
+# In[20]:
 
 #! cp accuracy.py /project/projectdirs/dasrepo/gordon_bell/deep_learning/networks/climate/2d_semi_sup
 

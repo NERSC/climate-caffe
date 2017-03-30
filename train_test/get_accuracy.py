@@ -19,7 +19,7 @@ if __name__ == "__main__":
     def get_cl_args():
         cl_args = {"path_to_caffemodel":"/project/projectdirs/dasrepo/gordon_bell/deep_learning/networks/climate/2d_semi_sup/models/_iter_10.caffemodel",
                     "path_to_caffe_prototxt":"/project/projectdirs/dasrepo/gordon_bell/deep_learning/networks/climate/2d_semi_sup/train_intel_goodperf_vanilla.prototxt",
-                   "iterations": 3}
+                   "iterations": 3, "iou_thresh":0.5}
 
         if any(["jupyter" in arg for arg in sys.argv]):
             sys.argv=sys.argv[:1]
@@ -47,7 +47,7 @@ if __name__ == "__main__":
     keys = ['xy_pred',
      'wh_pred','obj_scores_copy','class_scores_copy',
      ]
-    bba = BBox_Accuracy()
+    bba = BBox_Accuracy(iou_thresh=cl_args["iou_thresh"])
     for ep in range(cl_args["iterations"]):
         blobs =net.forward()
 
@@ -60,6 +60,7 @@ if __name__ == "__main__":
 
 
         bba.update_scores(net_output,label)
+	print "Accuracy at iteration %i is %8.4f\n" % (ep,bba.compute_final_accuracy())
 
     print "Final Accuracy is %8.4f\n" % (bba.compute_final_accuracy())
 
